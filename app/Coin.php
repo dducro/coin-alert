@@ -31,4 +31,6 @@ class Coin extends Model
 {
     protected $table = 'coins';
     protected $dates = ['last_updated'];
+    protected $keyType = 'string';
+    public $incrementing = false;
 }
