@@ -67,8 +67,7 @@ class DetectSpike implements ShouldQueue
 
         $coins = collect($response)
             ->map([$this, 'map'])
-            ->filter([$this, 'filter'])
-            ->filter([$this, 'cache']);
+            ->filter([$this, 'filter']);
 
         if ($coins->count()) {
             Mail::to(config('alert.recipients'))
@@ -79,14 +78,45 @@ class DetectSpike implements ShouldQueue
     /**
      * @param \App\Coin $coin
      * @return bool
+     * @throws \Exception
      */
     public function filter(Coin $coin)
     {
-        if (abs($coin->percent_change_1h) >= $this->minPercentChanged) {
-            if (($coin->percent_change_1h > 0 && $coin->percent_change_24h > 0) ||
-                ($coin->percent_change_1h < 0 && $coin->percent_change_24h < 0)) {
-                return true;
-            }
+        cache()->add($coin->id, $coin, 60 * 4);
+
+        /** @var Coin $cachedCoin */
+        $cachedCoin = cache()->get($coin->id);
+
+        // alert was already sent before
+        if (!$cachedCoin) {
+            return false;
+        }
+
+        // stop if spike was ended
+        if ($coin->is_positive != $cachedCoin->is_positive) {
+            cache()->forget($coin->id);
+
+            return false;
+        }
+
+        // don't alert a short spike, wait at least 2 hours
+        if ($coin->last_updated->diff($cachedCoin->last_updated)->h < 2) {
+            return false;
+        }
+
+        // don't show alert if min percent change is not met
+        if (abs($coin->percent_change_1h) < $this->minPercentChanged) {
+            return false;
+        }
+
+        // spike is detected!
+        if (($coin->percent_change_1h > 0 && $coin->percent_change_24h > 0) ||
+            ($coin->percent_change_1h < 0 && $coin->percent_change_24h < 0)) {
+
+            // don't show alert again
+            cache()->put($coin->id, false, 60 * 3);
+
+            return true;
         }
 
         return false;
@@ -103,16 +133,6 @@ class DetectSpike implements ShouldQueue
         $coin->volume_eur_24h = $data['24h_volume_eur'];
 
         return $coin;
-    }
-
-    /**
-     * @param \App\Coin $coin
-     * @return bool
-     * @throws \Exception
-     */
-    public function cache(Coin $coin)
-    {
-        return cache()->add($coin->id, 1, 60);
     }
 
 }
