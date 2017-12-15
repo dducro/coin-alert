@@ -26,6 +26,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property float  $price_eur
  * @property float  $volume_eur_24h
  * @property float  $market_cap_eur
+ * @property bool   $is_positive
  */
 class Coin extends Model
 {
@@ -33,4 +34,12 @@ class Coin extends Model
     protected $dates = ['last_updated'];
     protected $keyType = 'string';
     public $incrementing = false;
+    public $appends = [
+        'is_positive'
+    ];
+
+    public function getIsPositiveAttribute()
+    {
+        return $this->percent_change_1h > 0;
+    }
 }
