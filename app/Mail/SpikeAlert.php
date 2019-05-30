@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use App\Coin;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
@@ -33,7 +34,13 @@ class SpikeAlert extends Mailable
      */
     public function build()
     {
-        return $this->markdown('emails.alert')
+        $subject = $this->coins->map(function (Coin $coin) {
+            return ($coin->is_positive ? '⇧' : '⇩') . ' ' . $coin->symbol;
+        })->implode(' ');
+
+        return $this
+            ->subject($subject)
+            ->markdown('emails.alert')
             ->with(['coins' => $this->coins]);
     }
 }

@@ -43,7 +43,7 @@ class DetectSpike implements ShouldQueue
      * @param int    $count
      * @param string $currency
      */
-    public function __construct($minPercentChanged = 7, $count = 100, $currency = 'EUR')
+    public function __construct($minPercentChanged = 8, $count = 100, $currency = 'EUR')
     {
         $this->minPercentChanged = $minPercentChanged;
         $this->count             = $count;
@@ -66,23 +66,73 @@ class DetectSpike implements ShouldQueue
         $response = json_decode($client->get($url)->getBody()->getContents(), true);
 
         $coins = collect($response)
-            ->map(function ($data) {
-                $coin                 = (new Coin)->forceFill($data);
-                $coin->volume_usd_24h = $data['24h_volume_usd'];
-                $coin->volume_eur_24h = $data['24h_volume_eur'];
-
-                return $coin;
-            })
-            ->filter(function (Coin $coin) {
-                return abs($coin->percent_change_1h) >= $this->minPercentChanged;
-            })
-            ->filter(function (Coin $coin) {
-                return cache()->add($coin->id, 1, 60);
-            });
+            ->map([$this, 'map'])
+            ->filter([$this, 'filter']);
 
         if ($coins->count()) {
             Mail::to(config('alert.recipients'))
                 ->send(new SpikeAlert($coins));
         }
     }
+
+    /**
+     * @param \App\Coin $coin
+     * @return bool
+     * @throws \Exception
+     */
+    public function filter(Coin $coin)
+    {
+        cache()->add($coin->id, $coin, 60 * 4);
+
+        /** @var Coin $cachedCoin */
+        $cachedCoin = cache()->get($coin->id);
+
+        // alert was already sent before
+        if (!$cachedCoin) {
+            return false;
+        }
+
+        // stop if spike was ended
+        if ($coin->is_positive != $cachedCoin->is_positive) {
+            cache()->forget($coin->id);
+
+            return false;
+        }
+
+        // don't alert a short spike, wait at least 2 hours
+        if ($coin->last_updated->diff($cachedCoin->last_updated)->h < 2) {
+            return false;
+        }
+
+        // don't show alert if min percent change is not met
+        if (abs($coin->percent_change_1h) < $this->minPercentChanged) {
+            return false;
+        }
+
+        // spike is detected!
+        if (($coin->percent_change_1h > 0 && $coin->percent_change_24h > 0) ||
+            ($coin->percent_change_1h < 0 && $coin->percent_change_24h < 0)) {
+
+            // don't show alert again
+            cache()->put($coin->id, false, 60 * 3);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array $data
+     * @return \App\Coin
+     */
+    public function map(array $data)
+    {
+        $coin                 = (new Coin)->forceFill($data);
+        $coin->volume_usd_24h = $data['24h_volume_usd'];
+        $coin->volume_eur_24h = $data['24h_volume_eur'];
+
+        return $coin;
+    }
+
 }

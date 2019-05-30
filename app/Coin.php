@@ -2,6 +2,7 @@
 
 namespace App;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -22,10 +23,11 @@ use Illuminate\Database\Eloquent\Model;
  * @property float  $percent_change_1h
  * @property float  $percent_change_24h
  * @property float  $percent_change_7d
- * @property float  $last_updated
+ * @property Carbon $last_updated
  * @property float  $price_eur
  * @property float  $volume_eur_24h
  * @property float  $market_cap_eur
+ * @property bool   $is_positive
  */
 class Coin extends Model
 {
@@ -33,4 +35,12 @@ class Coin extends Model
     protected $dates = ['last_updated'];
     protected $keyType = 'string';
     public $incrementing = false;
+    public $appends = [
+        'is_positive'
+    ];
+
+    public function getIsPositiveAttribute()
+    {
+        return $this->percent_change_1h > 0;
+    }
 }
